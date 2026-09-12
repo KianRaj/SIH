@@ -23,8 +23,10 @@ new or threatening ones."
 | **Real TSRD data** (17 real stare-mode files) | Belief + periodicity / Belief-index | **~2.8× the real deployed receiver's own recorded hardware dwell schedule** |
 
 The hand-engineered belief-index scheduler — not a deep-RL model — is the strongest result in
-this project, on both synthetic and real data. Deep RL (SAC-Discrete) gets close on synthetic
-data; PEARL-style meta-context does not help. Full detail and caveats below.
+this project, on both synthetic and real data. **Deep RL (SAC-Discrete) is statistically tied
+with it** on synthetic data once checked across 8 seeds (not "close but behind" — genuinely
+indistinguishable, 95% CI on the difference crosses zero); PEARL-style meta-context does not
+help, significantly behind both. Full detail and caveats below.
 
 ---
 
@@ -153,6 +155,28 @@ plain SAC-Discrete (0.229) and belief-index (0.213). Our per-band features alrea
 strong hand-designed history summary; the extra context-inference machinery added training
 noise without adding information the belief features didn't already capture.
 
+### 2.4b `notebooks/paper5_pearl_v2_task_consistent.ipynb` — fixing a real bug in §2.4 before accepting its negative result
+
+Re-examined §2.4's result before accepting "meta-RL doesn't help": that notebook sampled its
+context batch and RL batch from **one buffer pooled across many different domain-randomized
+scenarios** — so the inferred `z` for a training step often didn't correspond to the actual
+scenario the paired states came from, contradicting PEARL's own design (its ablation shows
+mixing context across tasks "significantly hurts performance"). This notebook fixes that:
+each of 8 scenarios per training iteration is treated as one PEARL "task," and that task's own
+episode of transitions is used for **both** context inference and the RL update for that
+task — verified programmatically (Section 3 of the notebook), not just by code review.
+
+**Result: better than the buggy version, but the conclusion doesn't flip.** 0.2051 hit rate on
+the same 25-scenario set — essentially tied with belief-index (0.2133), still behind
+belief+periodicity (0.2453). The critic converges cleanly under the fix (Q-loss drops over an
+order of magnitude across training); the policy/temperature updates are the bottleneck now —
+this per-task design does one policy gradient step per training iteration (summed over 8
+tasks), an order of magnitude fewer policy updates than SAC-Discrete's per-environment-step
+cadence for the same wall-clock budget, and hadn't converged when training stopped. Read as: a
+real bug was found and fixed, the fixed version is methodologically sound, and it still isn't
+the best scheduler in this project — but *why* it isn't (update cadence, not the context
+mechanism) is now a specific, actionable finding rather than an unexamined "meta-RL failed."
+
 ### 2.5 `notebooks/rigorous_scheduler_comparison.ipynb` — closing the "is this actually rigorous" gaps
 
 A self-review flagged three gaps in the notebooks above: no oracle/regret baseline, no seed
@@ -177,12 +201,32 @@ breakdown. This notebook adds all three:
 ### 2.6 `notebooks/rl_seed_robustness_comparison.ipynb` — same rigor, applied to the RL papers
 
 Extends the significance treatment to `paper2`/`paper3`'s single-seed claims: retrains
-SAC-Discrete and PEARL-style from scratch across 8 seeds, checks whether "SAC-Discrete beats
-belief-index" and "PEARL-style underperforms both" survive seed variance, and — critically —
-adds the comparison the original single-seed papers never made: both RL methods **against
-Belief+periodicity specifically**, not just plain belief-index. *(Execution status: see
-§5 — this was still running as of this README's last update; check the notebook directly for
-final numbers.)*
+SAC-Discrete and PEARL-style from scratch across 8 seeds (fresh network init + fresh
+domain-randomized training data each time; ~69 minutes total, run once as a standalone
+checkpointed script — `data/checkpoints/rl_seed_sweep_checkpoint.jsonl` — since an earlier
+in-notebook attempt was killed mid-run by a session interruption with no partial results
+saved), checks whether "SAC-Discrete beats belief-index" and "PEARL-style underperforms both"
+survive seed variance, and — critically — adds the comparison the original single-seed papers
+never made: both RL methods **against Belief+periodicity specifically**, not just plain
+belief-index.
+
+| Scheduler | hit_rate mean ± std | vs Belief+periodicity (paired bootstrap) |
+|---|---|---|
+| Belief + periodicity | 0.1959 ± 0.0248 | — |
+| SAC-Discrete (residual, warm-started) | 0.1796 ± 0.0190 | −0.0163, CI [−0.0009, 0.0337], **not significant** |
+| Belief-index | 0.1752 ± 0.0156 | −0.0207, CI [0.0104, 0.0314], **significant** |
+| PEARL-style (context-conditioned) | 0.1730 ± 0.0163 | −0.0229, CI [0.0051, 0.0410], **significant** |
+| Round-robin | 0.1069 ± 0.0040 | −0.0890, **significant** |
+
+**Two findings, and one of them overturns a headline claim from §2.3:**
+- **"SAC-Discrete beats belief-index" does not survive seed variance.** Checked directly:
+  mean diff 0.0044, 95% CI **[−0.0112, 0.0198]** — crosses zero. The single-seed 0.229 vs 0.213
+  result was noise, not a real effect.
+- **Belief+periodicity is not significantly ahead of SAC-Discrete either** (CI barely crosses
+  zero: [−0.0009, 0.0337]). The honest claim is a statistical tie between the two strongest
+  methods in this project, not an outright win for either. Belief+periodicity *is* confirmed
+  significantly ahead of plain belief-index and PEARL-style. PEARL-style's added complexity is
+  confirmed not to earn its keep, now with real error bars behind that conclusion.
 
 ### 2.7 `notebooks/real_tsrd_validation.ipynb` — first contact with real data
 
@@ -276,7 +320,8 @@ SIH_2026/
 ├── rakelly19a.pdf                               -- PEARL paper (Rakelly et al. 2019)
 ├── data/
 │   ├── stare/test_stare/config_<i>.h5           -- 17 real TSRD stare-mode files (downloaded)
-│   └── scan/test_scan/config_<i>.h5             -- 17 real TSRD scan-mode files (downloaded, paired by config id)
+│   ├── scan/test_scan/config_<i>.h5             -- 17 real TSRD scan-mode files (downloaded, paired by config id)
+│   └── checkpoints/rl_seed_sweep_checkpoint.jsonl  -- raw per-seed results behind §2.6's table (one JSON line per seed x scheduler)
 └── notebooks/
     ├── smart_scan_strategy.ipynb                -- main prototype (belief-index, periodicity, residual PPO, 10-seed sweep)
     ├── paper1_egreedy_ps26055.ipynb
@@ -303,13 +348,46 @@ SIH_2026/
   0.06556** — the *relative ranking* does, and that's the load-bearing claim; closing the
   absolute-number gap needs PS26055's exact occupancy-construction rule, which their dossier
   doesn't fully specify.
-- **`rl_seed_robustness_comparison.ipynb`** — check whether it finished; if not, its
-  §2.6 claims are pending, not final.
+- **`rl_seed_robustness_comparison.ipynb` is complete** (§2.6) — but its headline finding is a
+  statistical tie between Belief+periodicity and SAC-Discrete, not a clean win. Don't present
+  "our heuristic beats deep RL" as settled; present "our heuristic is at least as good as
+  everything tried, including modern off-policy RL" instead — that's the claim the CIs
+  actually support.
 - No real-time/hardware latency measurement has been done on any scheduler in this repo.
 
 ---
 
-## 6. How to reproduce
+## 6. Open questions — the highest-value next steps, in priority order
+
+1. **Reconcile the real-data absolute-number gap with PS26055.** §2.7/§2.8 confirm the
+   *ranking* on real data but not the *magnitude* — closing this needs PS26055's actual
+   occupancy-construction script, not more guessing at rule variations.
+2. **Decide the real objective: hit rate or interception ratio.** Belief+periodicity has the
+   *highest* hit rate but the *lowest* interception ratio of the belief family (it re-visits
+   known-good bands at some cost to catching every emitter at least once) — check the actual
+   PS26055 scoring rubric before tuning `explore_weight`/`periodicity_weight` further, since
+   this could change which scheduler is "best" outright.
+3. **Re-warm-start SAC-Discrete/PEARL from Belief+periodicity, not plain belief-index.** Both
+   RL methods in §2.3/§2.4 are currently anchored to the *weaker* belief-index formula (missing
+   the periodicity term). Given §2.6 shows SAC-Discrete is already statistically tied with
+   Belief+periodicity despite that weaker anchor, warm-starting from the stronger index is the
+   most promising untried lever in this project — plausibly a bigger win than any ensembling
+   of the current checkpoints, since the current RL policies aren't diverse enough from
+   belief-index to ensemble well with it.
+4. **Amplitude-calibrated detection model for real data.** §2.7/§2.8 use a flat Pd/Pfa on real
+   files because the real amplitude scale (≈−190 to −10 dB) doesn't match the synthetic
+   sensitivity curve — a proper calibration (from a stated receiver spec, or fit from the
+   amplitude distribution) would let real-data runs use the same amplitude-aware detection
+   model the synthetic notebooks do.
+5. **Multi-band (k>1) scanning and threat-weighted reward** — both named in the main notebook's
+   own §10 as future work, neither implemented. Multi-band changes the action space from
+   discrete-|N| to combinatorial (non-trivial for the PPO/SAC action heads, not "a couple of
+   lines" as originally guessed). Threat-weighting directly answers the problem statement's own
+   complaint about wasting time on nonthreatening emitters.
+6. **Real-time/hardware latency benchmarking** — not measured anywhere in this repo; matters if
+   inference speed is part of the deployability story for a demo.
+
+## 7. How to reproduce
 
 ```bash
 pip install numpy pandas matplotlib torch nbformat nbclient h5py huggingface_hub
@@ -322,7 +400,7 @@ top to bottom. For the real-data notebooks (`real_tsrd_validation.ipynb`,
 gated access accepted at `huggingface.co/datasets/alan-turing-institute/turing-synthetic-radar-dataset`,
 authenticated via `huggingface-cli login` or the `HF_TOKEN` environment variable.
 
-## 7. References
+## 8. References
 
 - PS26055 Research Progress Report & Benchmark Dossier (internal, 2026).
 - Gunn, Hosford, Jones, Zeitler, Groves, Nockles — *The Turing Synthetic Radar Dataset: A
