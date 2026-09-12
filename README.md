@@ -228,13 +228,7 @@ the paired `stare`-mode ground truth for the same 17 real scenarios, using the c
 just a synthetic round-robin strawman but **the literal recorded behavior of real deployed EW
 receiver hardware**, by roughly 2.5×, on real pulse trains.
 
-### 2.9 `notebooks/code_explanation_hindi.md` — line-by-line walkthrough
-
-A complete Hindi-language, cell-by-cell, line-by-line explanation of `smart_scan_strategy.ipynb`
-— what each line is, why it's there, how it works — written for someone learning the codebase
-from scratch.
-
-### 2.10 `notebooks/results/all_methods_comparison.png`
+### 2.9 `notebooks/results/all_methods_comparison.png`
 
 A single comparison image, all 12 tested schedulers, in the same column format PS26055's own
 dossier uses (Scheduler | Hit rate | Total hits | vs RR) — synthetic-testbed results only
@@ -292,7 +286,6 @@ SIH_2026/
     ├── rl_seed_robustness_comparison.ipynb       -- same rigor applied to SAC-Discrete / PEARL-style
     ├── real_tsrd_validation.ipynb                -- first real-data validation (stare mode)
     ├── real_hardware_schedule_comparison.ipynb   -- beats the real deployed receiver's own schedule
-    ├── code_explanation_hindi.md                 -- line-by-line Hindi walkthrough
     └── results/all_methods_comparison.png
 ```
 
