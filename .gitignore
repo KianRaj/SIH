@@ -1,0 +1,10 @@
+# Gated real-dataset files -- not ours to redistribute; regenerate via README section 6
+data/
+
+# Python / notebook artifacts
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Local tool/session state
+.claude/
